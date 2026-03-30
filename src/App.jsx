@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, ChevronDown, LogOut, Tv, Film, Disc } from 'lucide-react';
+import { Search, ChevronDown, LogOut, Tv, Film, Disc, ArrowUp, ArrowDown } from 'lucide-react';
 
 // Static array of Anime genres with representative image URLs for the sidebar
 const GENRES = [
@@ -23,10 +23,24 @@ export default function App() {
   const [animeList, setAnimeList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeSearchQuery, setActiveSearchQuery] = useState('');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('All');
   
+  const [selectedSort, setSelectedSort] = useState('Popular');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [selectedGenre, setSelectedGenre] = useState(null);
+  
+  const SORTS = ['Metascore', 'Popular', 'Recent', 'IMDb'];
+
   const profileRef = useRef(null);
+
+  // Back to default or genre when search is cleared
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setActiveSearchQuery('');
+    }
+  }, [searchQuery]);
 
   // Close profile dropdown when clicking outside
   useEffect(() => {
@@ -40,13 +54,39 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    fetchTopAnime();
-  }, []);
+    fetchAnimeData();
+  }, [selectedGenre, selectedSort, sortOrder, activeSearchQuery]);
 
-  const fetchTopAnime = async () => {
+  const fetchAnimeData = async () => {
     try {
       setLoading(true);
-      const response = await fetch('https://api.jikan.moe/v4/top/anime?filter=bypopularity');
+      let url = 'https://api.jikan.moe/v4/anime?sfw';
+      
+      const currentQuery = activeSearchQuery.trim();
+
+      if (currentQuery) {
+        url += `&q=${encodeURIComponent(currentQuery)}`;
+      } else if (selectedGenre) {
+        url += `&genres=${selectedGenre}`;
+      }
+
+      const isDefaultSort = selectedSort === 'Popular' && sortOrder === 'desc';
+      
+      // If there's an active query and the sort is just the default 'Popular', 
+      // let's omit the order_by param to let relevance sorting take over.
+      if (!currentQuery || !isDefaultSort) {
+        if (selectedSort === 'Popular') {
+          url += `&order_by=popularity&sort=${sortOrder === 'desc' ? 'asc' : 'desc'}`;
+        } else if (selectedSort === 'Metascore') {
+          url += `&order_by=score&sort=${sortOrder}`;
+        } else if (selectedSort === 'Recent') {
+          url += `&order_by=start_date&sort=${sortOrder}`;
+        } else if (selectedSort === 'IMDb') {
+          url += `&order_by=favorites&sort=${sortOrder}`;
+        }
+      }
+
+      const response = await fetch(url);
       const data = await response.json();
       setAnimeList(data.data || []);
     } catch (err) {
@@ -56,22 +96,9 @@ export default function App() {
     }
   };
 
-  const searchAnime = async (e) => {
+  const searchAnime = (e) => {
     e.preventDefault();
-    if (!searchQuery.trim()) {
-      fetchTopAnime();
-      return;
-    }
-    try {
-      setLoading(true);
-      const response = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(searchQuery)}&sfw`);
-      const data = await response.json();
-      setAnimeList(data.data || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    setActiveSearchQuery(searchQuery);
   };
 
   // Helper to determine score color
@@ -105,7 +132,13 @@ export default function App() {
       */}
       <header className="flex items-center justify-between px-6 py-4 fixed top-0 left-0 right-0 z-50 bg-[#121212] h-[80px]">
         {/* Logo */}
-        <div className="flex items-center gap-3 cursor-pointer select-none" onClick={fetchTopAnime}>
+        <div className="flex items-center gap-3 cursor-pointer select-none" onClick={() => {
+          setSearchQuery('');
+          setActiveSearchQuery('');
+          setSelectedGenre(null);
+          setSelectedSort('Popular');
+          setSortOrder('desc');
+        }}>
            <div className="w-10 h-10 bg-white rounded-xl shadow-lg flex items-center justify-center">
              <div className="w-6 h-6 rounded-full bg-indigo-600 relative flex items-center justify-center">
                <div className="w-2 h-2 rounded-full bg-white"></div>
@@ -179,7 +212,16 @@ export default function App() {
             {GENRES.map((genre) => (
               <button 
                 key={genre.id}
-                className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-white/5 group transition-colors text-left"
+                onClick={() => {
+                  if (selectedGenre === genre.id) {
+                    setSelectedGenre(null);
+                  } else {
+                    setSelectedGenre(genre.id);
+                    setActiveSearchQuery('');
+                    setSearchQuery('');
+                  }
+                }}
+                className={`flex items-center gap-3 px-2 py-1.5 rounded-lg transition-colors text-left group ${selectedGenre === genre.id ? 'bg-white/10' : 'hover:bg-white/5'}`}
               >
                 <img 
                   src={genre.image} 
@@ -201,11 +243,35 @@ export default function App() {
 
           {/* Filters Row */}
           <div className="flex flex-wrap items-center gap-4 mb-8">
-            {/* Platforms Dropdown mock */}
-            <button className="bg-[#262626] hover:bg-[#303030] transition-colors rounded-lg px-4 py-2 flex items-center gap-2 text-[15px] font-medium">
-              Platforms
-              <ChevronDown className="w-4 h-4 ml-1" />
-            </button>
+            {/* Sort Dropdown & Toggle */}
+            <div className="flex items-center gap-2">
+              <div className="relative group">
+                <button className="bg-[#262626] hover:bg-[#303030] transition-colors rounded-lg px-4 py-2 flex items-center gap-2 text-[15px] font-medium min-w-[140px] justify-between z-30">
+                  <span>Sort By: {selectedSort}</span>
+                  <ChevronDown className="w-4 h-4 ml-1" />
+                </button>
+                <div className="absolute top-full left-0 pt-2 w-48 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-40">
+                  <div className="bg-[#1a1a1a] border border-white/10 rounded-xl overflow-hidden shadow-2xl py-1">
+                    {SORTS.map(sortOpt => (
+                      <div 
+                        key={sortOpt}
+                        className={`px-4 py-2 text-sm cursor-pointer hover:bg-white/5 ${selectedSort === sortOpt ? 'font-bold text-white' : 'text-gray-300'}`}
+                        onClick={() => setSelectedSort(sortOpt)}
+                      >
+                        {sortOpt}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                className="bg-[#262626] hover:bg-[#303030] transition-colors rounded-lg w-10 h-10 flex items-center justify-center text-gray-300 hover:text-white z-30"
+                title={`Sort ${sortOrder === 'desc' ? 'Descending (Upper)' : 'Ascending (Lower)'}`}
+              >
+                {sortOrder === 'desc' ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />}
+              </button>
+            </div>
             
             {/* Custom Category Dropdown */}
             <div className="relative group">
