@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Search, ChevronDown, LogOut, Tv, Film, Disc, ArrowUp, ArrowDown } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Search, ChevronDown, LogOut, Tv, Film, Disc, ArrowUp, ArrowDown, Heart, Bookmark, Check } from 'lucide-react';
 
 // Static array of Anime genres with representative image URLs for the sidebar
 const GENRES = [
@@ -17,7 +17,8 @@ const GENRES = [
   { id: 12, name: 'Mecha', image: 'https://cdn.myanimelist.net/images/anime/5/73199l.jpg' },
 ];
 
-const CATEGORIES = ['All', 'Watched', 'Watching', 'Plan to Watch', 'Dropped'];
+const CATEGORIES = ['All', 'Favorite', 'Watched', 'Watching', 'Plan to Watch', 'Dropped'];
+const CATEGORIES_SAVE = ['Watched', 'Watching', 'Plan to Watch', 'Dropped'];
 
 export default function App() {
   const [animeList, setAnimeList] = useState([]);
@@ -30,6 +31,73 @@ export default function App() {
   const [selectedSort, setSelectedSort] = useState('Popular');
   const [sortOrder, setSortOrder] = useState('desc');
   const [selectedGenre, setSelectedGenre] = useState(null);
+  const [activeSaveDropdown, setActiveSaveDropdown] = useState(null);
+  
+  const [userLibrary, setUserLibrary] = useState(() => {
+    try {
+      const saved = localStorage.getItem('animeflex_library');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('animeflex_library', JSON.stringify(userLibrary));
+  }, [userLibrary]);
+
+  const toggleLike = (anime) => {
+    setUserLibrary(prev => {
+      const existing = prev[anime.mal_id] || { anime, isLiked: false, category: null };
+      return { ...prev, [anime.mal_id]: { ...existing, anime, isLiked: !existing.isLiked } };
+    });
+  };
+
+  const setAnimeCategory = (anime, category) => {
+    setUserLibrary(prev => {
+      const existing = prev[anime.mal_id] || { anime, isLiked: false, category: null };
+      return { ...prev, [anime.mal_id]: { ...existing, anime, category } };
+    });
+  };
+
+  const displayedAnime = useMemo(() => {
+    if (selectedCategory === 'All') return animeList;
+    
+    const libraryList = Object.values(userLibrary);
+    let list = [];
+    
+    if (selectedCategory === 'Favorite') {
+      list = libraryList.filter(item => item.isLiked).map(item => item.anime);
+    } else {
+      list = libraryList.filter(item => item.category === selectedCategory).map(item => item.anime);
+    }
+
+    // Apply local sorting
+    list.sort((a, b) => {
+      let valA, valB;
+      if (selectedSort === 'Metascore') {
+        valA = a.score || 0;
+        valB = b.score || 0;
+      } else if (selectedSort === 'Popular') {
+        valA = a.popularity || 999999;
+        valB = b.popularity || 999999;
+        // Popularity: lower number is more popular
+        return sortOrder === 'desc' ? valA - valB : valB - valA;
+      } else if (selectedSort === 'Recent') {
+        valA = a.aired?.from ? new Date(a.aired.from).getTime() : 0;
+        valB = b.aired?.from ? new Date(b.aired.from).getTime() : 0;
+      } else if (selectedSort === 'IMDb') {
+        valA = a.favorites || 0;
+        valB = b.favorites || 0;
+      } else {
+        valA = 0; valB = 0;
+      }
+
+      return sortOrder === 'desc' ? valB - valA : valA - valB;
+    });
+
+    return list;
+  }, [animeList, selectedCategory, userLibrary, selectedSort, sortOrder]);
   
   const SORTS = ['Metascore', 'Popular', 'Recent', 'IMDb'];
 
@@ -55,9 +123,15 @@ export default function App() {
 
   useEffect(() => {
     fetchAnimeData();
-  }, [selectedGenre, selectedSort, sortOrder, activeSearchQuery]);
+  }, [selectedGenre, selectedSort, sortOrder, activeSearchQuery, selectedCategory]);
 
   const fetchAnimeData = async () => {
+    if (selectedCategory !== 'All') {
+      setAnimeList([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       let url = 'https://api.jikan.moe/v4/anime?sfw';
@@ -304,31 +378,94 @@ export default function App() {
                   <div key={i} className="bg-[#202020] rounded-2xl h-[300px] animate-pulse"></div>
                 ))}
              </div>
-          ) : animeList.length === 0 ? (
+          ) : displayedAnime.length === 0 ? (
             <div className="text-gray-400 text-xl font-medium pt-10">No anime found matching your criteria.</div>
           ) : (
              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6 gap-y-8">
-              {animeList.map((anime) => {
+              {displayedAnime.map((anime) => {
                 const title = anime.title_english || anime.title;
                 const scoreNum = anime.score ? Math.round(anime.score * 10) : null;
                 const scoreColor = getScoreColor(anime.score);
                 const imageUrl = anime.images?.jpg?.large_image_url || anime.images?.jpg?.image_url;
 
+                const libEntry = userLibrary[anime.mal_id] || {};
+                const isLiked = libEntry.isLiked || false;
+                const currentCategory = libEntry.category || null;
+
                 return (
                   <div 
                     key={anime.mal_id} 
-                    className="bg-[#202020] rounded-2xl overflow-hidden hover:scale-[1.03] transition-transform duration-200 ease-out cursor-pointer flex flex-col"
+                    className="bg-[#202020] rounded-2xl overflow-hidden hover:scale-[1.03] transition-transform duration-200 ease-out cursor-pointer flex flex-col group/card"
                   >
                     {/* Image Area - taking majority of height, adapting game hub landscape style */}
-                    <div className="w-full aspect-[4/3] relative overflow-hidden bg-[#1a1a1a]">
+                    <div className="w-full aspect-[4/3] relative overflow-hidden bg-[#1a1a1a] group/image">
                       {imageUrl && (
                         <img 
                           src={imageUrl} 
                           alt={title} 
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-cover group-hover/image:opacity-80 transition-opacity"
                           loading="lazy"
                         />
                       )}
+                      
+                      {/* Hover Overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover/image:opacity-100 transition-opacity flex items-end justify-end p-3 gap-2">
+                        {/* Like Button */}
+                        <button 
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleLike(anime);
+                          }}
+                          className={`p-2 rounded-full backdrop-blur-md transition-all ${isLiked ? 'bg-pink-500 text-white shadow-[0_0_15px_rgba(236,72,153,0.5)]' : 'bg-black/50 text-white hover:bg-pink-500'}`}
+                        >
+                          <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
+                        </button>
+                        
+                        {/* Save Button */}
+                        <div className="relative">
+                          <button 
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setActiveSaveDropdown(activeSaveDropdown === anime.mal_id ? null : anime.mal_id);
+                            }}
+                            className={`p-2 rounded-full backdrop-blur-md transition-all ${currentCategory ? 'bg-indigo-500 text-white shadow-[0_0_15px_rgba(99,102,241,0.5)]' : 'bg-black/50 text-white hover:bg-indigo-500'}`}
+                          >
+                            <Bookmark className={`w-5 h-5 ${currentCategory ? 'fill-current' : ''}`} />
+                          </button>
+                          
+                          {/* Save Dropdown */}
+                          {activeSaveDropdown === anime.mal_id && (
+                            <div 
+                              className="absolute bottom-full right-0 mb-2 w-48 bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 py-1"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            >
+                              {CATEGORIES_SAVE.map(cat => (
+                                <button
+                                  key={cat}
+                                  onClick={() => {
+                                    setAnimeCategory(anime, currentCategory === cat ? null : cat);
+                                    setActiveSaveDropdown(null);
+                                  }}
+                                  className="w-full text-left px-4 py-2 text-sm hover:bg-white/10 flex items-center justify-between transition-colors"
+                                >
+                                  {cat}
+                                  {currentCategory === cat && <Check className="w-4 h-4 text-indigo-400" />}
+                                </button>
+                              ))}
+                              {currentCategory && (
+                                <button
+                                   onClick={() => { setAnimeCategory(anime, null); setActiveSaveDropdown(null); }}
+                                   className="w-full text-left px-4 py-2 text-sm hover:bg-red-500/20 text-red-400 transition-colors border-t border-white/5"
+                                >
+                                  Remove from Category
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                     
                     {/* Card Content underneath */}
