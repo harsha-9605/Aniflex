@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, ChevronDown, LogOut, Tv, Film, Disc, ArrowUp, ArrowDown, Heart, Bookmark, Check } from 'lucide-react';
+import Auth from './Auth';
 
 // Static array of Anime genres with representative image URLs for the sidebar
 const GENRES = [
@@ -21,6 +22,7 @@ const CATEGORIES = ['All', 'Favorite', 'Watched', 'Watching', 'Plan to Watch', '
 const CATEGORIES_SAVE = ['Watched', 'Watching', 'Plan to Watch', 'Dropped'];
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState(null);
   const [animeList, setAnimeList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -33,30 +35,64 @@ export default function App() {
   const [selectedGenre, setSelectedGenre] = useState(null);
   const [activeSaveDropdown, setActiveSaveDropdown] = useState(null);
   
-  const [userLibrary, setUserLibrary] = useState(() => {
-    try {
-      const saved = localStorage.getItem('animeflex_library');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [userLibrary, setUserLibrary] = useState({});
 
   useEffect(() => {
-    localStorage.setItem('animeflex_library', JSON.stringify(userLibrary));
-  }, [userLibrary]);
+    const fetchLibrary = async () => {
+      if (!currentUser) return;
+      try {
+        const response = await fetch(`http://localhost:8000/library?user_id=${encodeURIComponent(currentUser.email)}`);
+        if (response.ok) {
+          const data = await response.json();
+          const normalized = {};
+          for (const key in data) {
+            normalized[key] = {
+              anime: data[key],
+              isLiked: data[key].isLiked,
+              category: data[key].category
+            };
+          }
+          setUserLibrary(normalized);
+        }
+      } catch (error) {
+        console.error("Failed to fetch library from backend:", error);
+      }
+    };
+    fetchLibrary();
+  }, [currentUser]);
+
+  const updateBackendLibrary = async (anime_id, item) => {
+    if (!currentUser) return;
+    try {
+      await fetch(`http://localhost:8000/library/${anime_id}?user_id=${encodeURIComponent(currentUser.email)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item),
+      });
+    } catch (error) {
+      console.error("Failed to update library item on backend:", error);
+    }
+  };
 
   const toggleLike = (anime) => {
     setUserLibrary(prev => {
       const existing = prev[anime.mal_id] || { anime, isLiked: false, category: null };
-      return { ...prev, [anime.mal_id]: { ...existing, anime, isLiked: !existing.isLiked } };
+      const updatedItem = { ...existing, anime, isLiked: !existing.isLiked };
+      
+      updateBackendLibrary(anime.mal_id, updatedItem);
+      
+      return { ...prev, [anime.mal_id]: updatedItem };
     });
   };
 
   const setAnimeCategory = (anime, category) => {
     setUserLibrary(prev => {
       const existing = prev[anime.mal_id] || { anime, isLiked: false, category: null };
-      return { ...prev, [anime.mal_id]: { ...existing, anime, category } };
+      const updatedItem = { ...existing, anime, category };
+      
+      updateBackendLibrary(anime.mal_id, updatedItem);
+      
+      return { ...prev, [anime.mal_id]: updatedItem };
     });
   };
 
@@ -196,6 +232,10 @@ export default function App() {
     );
   };
 
+  if (!currentUser) {
+    return <Auth onLogin={setCurrentUser} />;
+  }
+
   return (
     <div className="min-h-screen bg-[#121212] text-white font-sans">
       
@@ -248,7 +288,7 @@ export default function App() {
             className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center overflow-hidden hover:ring-2 hover:ring-gray-300 transition-all"
           >
             <img 
-              src="https://ui-avatars.com/api/?name=User&background=4f46e5&color=fff&bold=true" 
+              src={`https://ui-avatars.com/api/?name=${encodeURIComponent(currentUser.name)}&background=4f46e5&color=fff&bold=true`}
               alt="User" 
               className="w-full h-full object-cover"
             />
@@ -258,11 +298,14 @@ export default function App() {
           {isProfileOpen && (
             <div className="absolute right-0 mt-3 w-48 bg-[#1a1a1a] rounded-xl shadow-2xl py-2 border border-white/10 z-50">
               <div className="px-4 py-2 border-b border-white/5 mb-1">
-                <p className="text-sm font-semibold truncate">ahars@example.com</p>
+                <p className="text-sm font-semibold truncate">{currentUser.email}</p>
               </div>
               <button 
                 className="w-full text-left px-4 py-2 text-red-500 hover:bg-white/5 font-medium text-sm flex items-center gap-2 transition-colors"
-                onClick={() => setIsProfileOpen(false)}
+                onClick={() => {
+                  setCurrentUser(null);
+                  setIsProfileOpen(false);
+                }}
               >
                 <LogOut className="w-4 h-4" />
                 Sign Out
@@ -386,7 +429,7 @@ export default function App() {
                 const title = anime.title_english || anime.title;
                 const scoreNum = anime.score ? Math.round(anime.score * 10) : null;
                 const scoreColor = getScoreColor(anime.score);
-                const imageUrl = anime.images?.jpg?.large_image_url || anime.images?.jpg?.image_url;
+                const imageUrl = anime.images?.jpg?.large_image_url || anime.images?.jpg?.image_url || anime.image_url;
 
                 const libEntry = userLibrary[anime.mal_id] || {};
                 const isLiked = libEntry.isLiked || false;
