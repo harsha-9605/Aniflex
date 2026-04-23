@@ -18,8 +18,12 @@ app.add_middleware(
 
 # --- MONGODB CONNECTION ---
 import certifi
+import os
+from dotenv import load_dotenv
 
-MONGO_URL = "mongodb+srv://Harsha_96:Sanji_9605@cluster0.bfcuzb2.mongodb.net/?appName=Cluster0"
+load_dotenv()
+
+MONGO_URL = os.getenv("MONGO_URL")
 
 client = AsyncIOMotorClient(MONGO_URL, tlsCAFile=certifi.where())
 db = client.anime_db  # Database name
