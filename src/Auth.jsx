@@ -23,7 +23,7 @@ export default function Auth({ onLogin }) {
         bodyPayload.name = name;
       }
       
-      const response = await fetch(`http://localhost:8000${endpoint}`, {
+      const response = await fetch(`https://aniflex-2qlg.onrender.com${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bodyPayload)

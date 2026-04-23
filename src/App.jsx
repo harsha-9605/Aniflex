@@ -41,7 +41,7 @@ export default function App() {
     const fetchLibrary = async () => {
       if (!currentUser) return;
       try {
-        const response = await fetch(`http://localhost:8000/library?user_id=${encodeURIComponent(currentUser.email)}`);
+        const response = await fetch(`https://aniflex-2qlg.onrender.com/library?user_id=${encodeURIComponent(currentUser.email)}`);
         if (response.ok) {
           const data = await response.json();
           const normalized = {};
@@ -64,7 +64,7 @@ export default function App() {
   const updateBackendLibrary = async (anime_id, item) => {
     if (!currentUser) return;
     try {
-      await fetch(`http://localhost:8000/library/${anime_id}?user_id=${encodeURIComponent(currentUser.email)}`, {
+      await fetch(`https://aniflex-2qlg.onrender.com/library/${anime_id}?user_id=${encodeURIComponent(currentUser.email)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(item),
